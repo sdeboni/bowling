@@ -1,3 +1,7 @@
+// Iteration 2:
+// 1. reassigning variable name to remove self. inspired by potatosalad's solution
+// 2. replaced panic with invariant
+// 3. simplified definitions of frame is_strike, spare and complete
 #[derive(Debug, PartialEq, Eq)]
 pub enum Error {
     NotEnoughPinsLeft,
@@ -11,18 +15,20 @@ struct Frame {
 
 impl Frame {
     fn roll(&mut self, pins: u8) -> Result<(), Error> {
-        assert!(pins <= 10);
+        assert!(pins < 11);
+        let roll = &mut self.roll;
 
-        if self.roll.0.is_none() {
-            assert!(self.roll.1.is_none());
-            self.roll.0 = Some(pins);
-        } else if self.roll.1.is_none() {
-            if self.roll.0.unwrap() + pins > 10 {
+        assert!(roll.0.is_none() || roll.1.is_none());
+
+        if roll.0.is_none() {
+            assert!(roll.1.is_none());
+            roll.0 = Some(pins);
+        } else if roll.1.is_none() {
+            assert!(roll.0.is_some());
+            if roll.0.unwrap() + pins > 10 {
                 return Err(Error::NotEnoughPinsLeft);
             }
-            self.roll.1 = Some(pins);
-        } else {
-            panic!("cannot add roll to frame; frame is complete");
+            roll.1 = Some(pins);
         }
         Ok(())
     }
@@ -36,20 +42,11 @@ impl Frame {
     }
 
     fn is_strike(&self) -> bool {
-        if self.roll.0.map_or_else(|| false, |v| v == 10) {
-            assert!(self.roll.1.is_none());
-            true
-        } else {
-            false
-        }
+        self.roll.0.map_or_else(|| false, |v| v == 10)
     }
 
     fn is_spare(&self) -> bool {
-        if self.is_complete() {
-            self.roll.0.unwrap() + self.roll.1.unwrap() == 10
-        } else {
-            false
-        }
+        self.pins() == 10 && !self.is_strike()
     }
 }
 
@@ -69,26 +66,29 @@ impl BowlingGame {
     }
 
     pub fn roll(&mut self, pins: u8) -> Result<(), Error> {
+        let frames = &mut self.frames;
+        let fill = &mut self.fill;
+
         if pins > 10 {
             Err(Error::NotEnoughPinsLeft)
         } else {
-            match self.frames.iter_mut().find(|frame| !frame.is_complete()) {
+            match frames.iter_mut().find(|frame| !frame.is_complete()) {
                 Some(frame) => frame.roll(pins),
                 None => {
-                    if self.frames[9].is_strike() {
-                        if self.fill.0.is_none() {
-                            self.fill.0 = Some(pins);
-                        } else if self.fill.1.is_none() {
-                            if self.fill.0.unwrap() < 10 && self.fill.0.unwrap() + pins > 10 {
+                    if frames[9].is_strike() {
+                        if fill.0.is_none() {
+                            fill.0 = Some(pins);
+                        } else if fill.1.is_none() {
+                            if fill.0.unwrap() < 10 && fill.0.unwrap() + pins > 10 {
                                 return Err(Error::NotEnoughPinsLeft);
                             } else {
-                                self.fill.1 = Some(pins);
+                                fill.1 = Some(pins);
                             }
                         } else {
                             return Err(Error::GameComplete);
                         }
-                    } else if self.frames[9].is_spare() && self.fill.0.is_none() {
-                        self.fill.0 = Some(pins);
+                    } else if frames[9].is_spare() && fill.0.is_none() {
+                        fill.0 = Some(pins);
                     } else {
                         return Err(Error::GameComplete);
                     }
@@ -99,11 +99,14 @@ impl BowlingGame {
     }
 
     fn is_complete(&self) -> bool {
-        if self.frames.iter().all(|frame| frame.is_complete()) {
-            if self.frames[9].is_strike() {
-                self.fill.0.is_some() && self.fill.1.is_some()
-            } else if self.frames[9].is_spare() {
-                self.fill.0.is_some()
+        let frames = &self.frames;
+        let fill = &self.fill;
+
+        if frames.iter().all(|frame| frame.is_complete()) {
+            if frames[9].is_strike() {
+                fill.0.is_some() && fill.1.is_some()
+            } else if frames[9].is_spare() {
+                fill.0.is_some()
             } else {
                 true
             }
@@ -113,40 +116,47 @@ impl BowlingGame {
     }
 
     pub fn score(&self) -> Option<u16> {
-        if self.is_complete() {
-            let mut score = 0_u16;
-
-            for i in 0..8 {
-                score += self.frames[i].pins() as u16;
-                if self.frames[i].is_strike() {
-                    score += self.frames[i + 1].pins() as u16;
-                    if self.frames[i + 1].is_strike() {
-                        score += self.frames[i + 2].roll.0.unwrap() as u16;
-                    }
-                } else if self.frames[i].is_spare() {
-                    score += self.frames[i + 1].roll.0.unwrap() as u16;
-                }
-            }
-
-            score += self.frames[8].pins() as u16;
-            if self.frames[8].is_strike() {
-                score += self.frames[9].pins() as u16;
-                if self.frames[9].is_strike() {
-                    score += self.fill.0.unwrap() as u16;
-                }
-            } else if self.frames[8].is_spare() {
-                score += self.frames[9].roll.0.unwrap() as u16;
-            }
-
-            score += self.frames[9].pins() as u16;
-            if self.frames[9].is_strike() {
-                score += self.fill.0.unwrap() as u16 + self.fill.1.unwrap() as u16;
-            } else if self.frames[9].is_spare() {
-                score += self.fill.0.unwrap() as u16;
-            }
-            Some(score)
-        } else {
-            None
+        if !self.is_complete() {
+            return None;
         }
+
+        let frames = &self.frames;
+        let fill = &self.fill;
+
+        let mut score = 0_u16;
+
+        // Score first 8 frames
+        for i in 0..8 {
+            score += frames[i].pins() as u16;
+            if frames[i].is_strike() {
+                score += frames[i + 1].pins() as u16;
+                if frames[i + 1].is_strike() {
+                    score += frames[i + 2].roll.0.unwrap() as u16;
+                }
+            } else if frames[i].is_spare() {
+                score += frames[i + 1].roll.0.unwrap() as u16;
+            }
+        }
+
+        // Score ninth frame
+        score += frames[8].pins() as u16;
+        if frames[8].is_strike() {
+            score += frames[9].pins() as u16;
+            if frames[9].is_strike() {
+                score += fill.0.unwrap() as u16;
+            }
+        } else if frames[8].is_spare() {
+            score += frames[9].roll.0.unwrap() as u16;
+        }
+
+        // Score last frame
+        score += frames[9].pins() as u16;
+        if frames[9].is_strike() {
+            score += fill.0.unwrap() as u16 + fill.1.unwrap() as u16;
+        } else if frames[9].is_spare() {
+            score += fill.0.unwrap() as u16;
+        }
+
+        Some(score)
     }
 }
