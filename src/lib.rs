@@ -11,9 +11,9 @@ pub enum Error {
 pub struct BowlingGame {
     is_complete: bool,
     score: u16,
-    frame_number: u8,
-    first_frame_roll_pins: Option<u8>,
-    roll_bonus: (Option<u8>, Option<u8>),
+    frame: u8,
+    first_pins: Option<u8>,
+    bonus: (Option<u8>, Option<u8>),
 }
 
 impl BowlingGame {
@@ -21,9 +21,9 @@ impl BowlingGame {
         BowlingGame {
             is_complete: false,
             score: 0,
-            frame_number: 1,
-            first_frame_roll_pins: None,
-            roll_bonus: (None, None),
+            frame: 1,
+            first_pins: None,
+            bonus: (None, None),
         }
     }
 
@@ -32,33 +32,33 @@ impl BowlingGame {
             return Err(Error::GameComplete);
         }
 
-        if pins + self.first_frame_roll_pins.unwrap_or(0) > 10 {
+        if pins + self.first_pins.unwrap_or(0) > 10 {
             return Err(Error::NotEnoughPinsLeft);
         }
 
-        self.score += (pins * (1 + self.roll_bonus.0.unwrap_or(0))) as u16;
-        self.roll_bonus = (self.roll_bonus.1, None);
+        self.score += (pins * (1 + self.bonus.0.unwrap_or(0))) as u16;
+        self.bonus = (self.bonus.1, None);
 
-        if self.frame_number < 11 {
-            if pins + self.first_frame_roll_pins.unwrap_or(0) == 10 {
-                let bonus = if self.frame_number < 10 { 1 } else { 0 };
+        if self.frame < 11 {
+            if pins + self.first_pins.unwrap_or(0) == 10 {
+                let bonus = if self.frame < 10 { 1 } else { 0 };
                 if pins == 10 {
-                    self.roll_bonus = (Some(bonus + self.roll_bonus.0.unwrap_or(0)), Some(bonus));
+                    self.bonus = (Some(bonus + self.bonus.0.unwrap_or(0)), Some(bonus));
                 } else {
-                    self.roll_bonus.0 = Some(bonus + self.roll_bonus.0.unwrap_or(0));
+                    self.bonus.0 = Some(bonus + self.bonus.0.unwrap_or(0));
                 }
             }
-            if self.first_frame_roll_pins.is_some() || pins == 10 {
-                self.frame_number += 1;
-                self.first_frame_roll_pins = None;
+            if self.first_pins.is_some() || pins == 10 {
+                self.frame += 1;
+                self.first_pins = None;
             } else {
-                self.first_frame_roll_pins = Some(pins);
+                self.first_pins = Some(pins);
             }
         } else if pins < 10 {
-            self.first_frame_roll_pins = Some(pins);
+            self.first_pins = Some(pins);
         }
 
-        self.is_complete = self.frame_number == 11 && self.roll_bonus == (None, None);
+        self.is_complete = self.frame == 11 && self.bonus == (None, None);
 
         Ok(())
     }
